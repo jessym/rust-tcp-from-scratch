@@ -4,7 +4,8 @@
 ### This script is ran INSIDE the VM to execute the Rust networking application
 ###
 
-iface="mytun"
+iface="mytun" # This should correspond with main.rs
+binary="rust-tcp-from-scratch" # This should correspond with Cargo.toml
 
 [[ -f "$HOME/.cargo/env" ]] && {
   source "$HOME/.cargo/env"
@@ -20,16 +21,16 @@ command -v "cargo" > /dev/null || {
 echo " > Building"
 set -e
 cargo build
-mv ./target/debug/rust_networking ~
-sudo setcap cap_net_admin=eip ~/rust_networking
+mv "./target/debug/$binary" ~
+sudo setcap cap_net_admin=eip "$HOME/$binary"
 
 echo " > Starting application in the background"
-~/rust_networking &
+"$HOME/$binary" &
 pid="$!"
 
 handle_exit_and_clean_up() {
   kill -SIGTERM "$pid" &> /dev/null
-  rm -rf ~/rust_networking
+  rm -rf "${HOME:?}/$binary"
 }
 trap handle_exit_and_clean_up EXIT
 trap handle_exit_and_clean_up SIGINT
@@ -39,7 +40,7 @@ while ! ip link show "$iface" &> /dev/null; do
   sleep 0.1
 done
 sudo ip addr add 192.168.0.1/24 dev "$iface"
-sudo ip link set up dev "$iface"
+sudo ip link set dev "$iface" up
 
 echo " > Waiting for PID $pid"
 wait "$pid"
