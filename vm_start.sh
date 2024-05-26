@@ -45,18 +45,25 @@ is_vm_running && tart stop "$vm"
 tart run --dir="$(pwd)" "$vm" &
 pid="$!"
 while ! is_vm_running; do
-  echo "Waiting for VM $pid to start..."
+  echo "⏳ Waiting for VM $pid to start..."
   sleep 1
 done
+echo "✅ VM $pid started!"
 sleep 1
 
 ##
-## SSH to server
+## Save personal SSH public key to the VM server
 ##
 while ! ssh -q $ssh_opts "admin@$(tart ip "$vm")" 'cat > ~/.ssh/authorized_keys' < "$public_key"; do
-  echo "Waiting for VM $pid to establish SSH connection..."
+  echo "⏳ Waiting for VM $pid to accept SSH public key..."
   sleep 1
 done
+echo "✅ VM $pid accepted SSH public key!"
+sleep 1
+
+##
+## SSH into the VM
+##
 ssh -qt $ssh_opts "admin@$(tart ip "$vm")" \
   "sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt; cd /mnt; bash --login"
 
