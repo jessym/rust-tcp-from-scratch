@@ -1,3 +1,5 @@
+mod tcp;
+
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
@@ -5,8 +7,7 @@ use std::net::Ipv4Addr;
 
 use etherparse::{Ipv4HeaderSlice, TcpHeaderSlice};
 use tun_tap::{Iface, Mode};
-
-mod tcp;
+use crate::tcp::State;
 
 const PROTO_IPV4: u16 = 0x0800;
 // const PROTO_IPV6: u16 = 0x86dd;
@@ -36,7 +37,7 @@ struct SocketPair {
 fn main() -> io::Result<()> {
     let _sp = SocketPair::default();
 
-    let _connections = HashMap::<SocketPair, tcp::State>::default();
+    let mut connections = HashMap::<SocketPair, State>::new();
     /*
     The TUN mode means: you'll be supplied with raw IP packets
     The TAP mode means: you'll be supplied with raw Ethernet frames
@@ -57,11 +58,7 @@ fn main() -> io::Result<()> {
         let incoming_frame_tuntap_flags = u16::from_be_bytes([buffer[0], buffer[1]]);
         let incoming_frame_tuntap_proto = u16::from_be_bytes([buffer[2], buffer[3]]);
 
-        let ip_packet = &buffer[incoming_frame_tuntap_prepended_info_length..];
-        let ip_packet_size =
-            incoming_frame_total_size - incoming_frame_tuntap_prepended_info_length;
-        // Note: you cannot use `let ip_packet_size = ip_packet.len();` here...
-        // ...that's because `ip_packet.len()` will always return the number 1500 (buffer size minus 4), NOT how many bytes were actually copied into it from the interface
+        let ip_packet = &buffer[incoming_frame_tuntap_prepended_info_length..incoming_frame_total_size];
 
         /*
         For the `incoming_frame_tuntap_proto`, you might get the value 0x86DD
@@ -80,34 +77,39 @@ fn main() -> io::Result<()> {
                 eprintln!("Skipping weird IPv4 packet: {:?}", e)
             }
             Ok(ipv4_header) => {
-                let ip_packet_proto = ipv4_header.protocol();
-                let ip_packet_src = ipv4_header.source_addr();
-                let ip_packet_dest = ipv4_header.destination_addr();
-                let ip_packet_payload_size = ipv4_header.payload_len().unwrap();
+                let ip_packet_src_addr = ipv4_header.source_addr();
+                let ip_packet_dest_addr = ipv4_header.destination_addr();
                 let tcp_segment = &ip_packet[ipv4_header.slice().len()..];
-                // Alternative: let tcp_segment = &ip_packet[(ip_packet_size - ip_packet_payload_size as usize)..];
                 match TcpHeaderSlice::from_slice(tcp_segment) {
-                    // Alternative: match TcpHeaderSlice::from_slice(&packet[ipv4_header.slice().len()..]) {
                     Err(e) => {
                         eprintln!("Skipping weird TCP packet: {:?}", e);
                     }
                     Ok(tcp_header) => {
-                        let tcp_segment_src = tcp_header.source_port();
-                        let tcp_segment_dest = tcp_header.destination_port();
+                        let tcp_segment_src_port = tcp_header.source_port();
+                        let tcp_segment_dest_port = tcp_header.destination_port();
+                        let tcp_payload = &tcp_segment[tcp_header.slice().len()..];
+
                         eprintln!(
                             "🎭 [EFRAME_FLAGS={}, EFRAME_PROTO=0x{:x}, IP_PACKET_SIZE={}]",
                             incoming_frame_tuntap_flags,
                             incoming_frame_tuntap_proto,
-                            ip_packet_size
+                            ip_packet.len()
                         );
-                        eprintln!(
-                            "   > IP [Address {} ==> {}]: received {} bytes of protocol {:?}",
-                            ip_packet_src, ip_packet_dest, ip_packet_payload_size, ip_packet_proto
-                        );
-                        eprintln!(
-                            "      > TCP [Port {} ==> {}]",
-                            tcp_segment_src, tcp_segment_dest
-                        );
+
+                        let socket_pair = SocketPair {
+                            src: Socket {
+                                ip: ip_packet_src_addr,
+                                port: tcp_segment_src_port,
+                            },
+                            dest: Socket {
+                                ip: ip_packet_dest_addr,
+                                port: tcp_segment_dest_port,
+                            },
+                        };
+                        connections
+                            .entry(socket_pair)
+                            .or_default()
+                            .handle_packet(ipv4_header, tcp_header, tcp_payload);
                     }
                 }
             }
