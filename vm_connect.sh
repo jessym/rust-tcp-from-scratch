@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 
 ###
-### Tart VM: https://tart.run/
+### This script is used for opening an SSH session to a running Tart VM
 ###
-### This script is used for starting a VM, and opening an SSH session to it
-### (necessary for executing the `run.sh` script)
-###
-### VM credentials = admin / admin
+### It should use your SSH public key, but VM credentials = admin / admin
 ###
 vm="rust_networking_vm"
 ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
