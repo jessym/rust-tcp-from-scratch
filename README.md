@@ -11,10 +11,14 @@ Tested with a MacOS host machine, using Tart VM for virtualizing a Linux environ
 ```bash
 # 1. Spin up a Linux VM (the current working dir is mounted to /mnt)
 ./vm_start.sh
+```
 
+```bash
 # 2. Optional; SSH into the Linux VM from a different terminal window as well
 ./vm_connect.sh
+```
 
+```bash
 # 3. Make a real TCP request
 nc 192.168.0.2 80
 ```

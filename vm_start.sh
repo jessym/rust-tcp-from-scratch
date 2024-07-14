@@ -52,19 +52,31 @@ echo "✅ VM $pid started!"
 sleep 1
 
 ##
+## Determine the IP address
+##
+vm_ip_addr=""
+while [[ -z "$vm_ip_addr" ]]; do
+  echo "⏳ Waiting for IP address..."
+  vm_ip_addr="$(tart ip "$vm" 2>/dev/null)"
+  sleep 1
+done
+echo "✅ IP address $vm_ip_addr determined!"
+sleep 1
+
+##
 ## Save personal SSH public key to the VM server
 ##
-while ! ssh -q $ssh_opts "admin@$(tart ip "$vm")" 'cat > ~/.ssh/authorized_keys' < "$public_key"; do
+while ! ssh -q $ssh_opts "admin@$vm_ip_addr" 'cat > ~/.ssh/authorized_keys' < "$public_key"; do
   echo "⏳ Waiting for VM $pid to accept SSH public key..."
   sleep 1
 done
-echo "✅ VM $pid accepted SSH public key!"
+echo "✅ VM $pid has accepted SSH public key!"
 sleep 1
 
 ##
 ## SSH into the VM
 ##
-ssh -qt $ssh_opts "admin@$(tart ip "$vm")" \
+ssh -qt $ssh_opts "admin@$vm_ip_addr" \
   "sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt; cd /mnt; bash --login"
 
 ##
