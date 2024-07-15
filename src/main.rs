@@ -19,24 +19,13 @@ struct Socket {
     port: u16,
 }
 
-impl Default for Socket {
-    fn default() -> Self {
-        Self {
-            ip: Ipv4Addr::new(0, 0, 0, 0),
-            port: 0,
-        }
-    }
-}
-
-#[derive(Default, Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq)]
 struct SocketPair {
     src: Socket,
     dest: Socket,
 }
 
 fn main() -> io::Result<()> {
-    let _sp = SocketPair::default();
-
     let mut connections = HashMap::<SocketPair, State>::new();
     /*
     The TUN mode means: you'll be supplied with raw IP packets
