@@ -5,7 +5,7 @@
 ###
 
 iface="mytun" # This should correspond with main.rs
-binary="rust-tcp-from-scratch" # This should correspond with Cargo.toml
+binary="$(grep 'name = ' Cargo.toml | awk '{ print $3 }' | tr -d '"')"
 
 [[ -f "$HOME/.cargo/env" ]] && {
   source "$HOME/.cargo/env"

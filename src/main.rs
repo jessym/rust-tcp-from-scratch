@@ -7,8 +7,7 @@ use std::net::Ipv4Addr;
 
 use etherparse::{Ipv4HeaderSlice, TcpHeaderSlice};
 use tun_tap::{Iface, Mode};
-
-use crate::tcp::State;
+use crate::tcp::Connection;
 
 // Proto field in Ethernet frame header
 const ETHERNET_FRAME_PROTO_IPV4: u16 = 0x0800;
@@ -29,16 +28,16 @@ struct SocketPair {
 }
 
 fn main() -> io::Result<()> {
-    let mut connections = HashMap::<SocketPair, State>::new();
+    let mut connections = HashMap::<SocketPair, Connection>::new();
 
     /*
     The TUN mode means: you'll be supplied with raw IP packets
     The TAP mode means: you'll be supplied with raw Ethernet frames
      */
-    let iface = Iface::new("mytun", Mode::Tun)?;
+    let interface = Iface::new("mytun", Mode::Tun)?;
     let mut buffer = [0u8; 1504];
     loop {
-        let incoming_frame_total_size = iface.recv(&mut buffer[..])?;
+        let incoming_frame_total_size = interface.recv(&mut buffer[..])?;
 
         /*
         By default, tun/tap prepends packet information (4 bytes) for incoming data:
@@ -58,7 +57,10 @@ fn main() -> io::Result<()> {
              - in case of 0x86DD, it's an IPv6 packet: https://en.wikipedia.org/wiki/EtherType
             For convenience, we ignore anything which isn't IPv4
              */
-            eprintln!("Skipping unsupported Ethernet frame: 0x{:x}", incoming_frame_tuntap_proto);
+            eprintln!(
+                "Skipping unsupported Ethernet frame: 0x{:x}",
+                incoming_frame_tuntap_proto
+            );
             continue;
             /*
             Quick side note, we would have only gotten IP packets (ipv4 or ipv6) at this point anyway...
@@ -67,7 +69,8 @@ fn main() -> io::Result<()> {
         }
 
         // We know that the payload "must" (should) be an IP packet at this point
-        let ip_packet = &buffer[incoming_frame_tuntap_prepended_info_length..incoming_frame_total_size];
+        let ip_packet =
+            &buffer[incoming_frame_tuntap_prepended_info_length..incoming_frame_total_size];
         match Ipv4HeaderSlice::from_slice(ip_packet) {
             Err(e) => {
                 eprintln!("Skipping invalid IPv4 packet: {:?}", e)
@@ -85,19 +88,25 @@ fn main() -> io::Result<()> {
                 let tcp_segment = &ip_packet[ipv4_header.slice().len()..];
                 match TcpHeaderSlice::from_slice(tcp_segment) {
                     Err(e) => {
-                        eprintln!("Skipping invalid TCP packet: {:?}", e);
+                        eprintln!("Skipping invalid TCP segment: {:?}", e);
                     }
                     Ok(tcp_header) => {
                         let tcp_segment_src_port = tcp_header.source_port();
                         let tcp_segment_dest_port = tcp_header.destination_port();
                         let tcp_payload = &tcp_segment[tcp_header.slice().len()..];
+                        if tcp_segment_dest_port != 5000 {
+                            eprintln!(
+                                "Hereby, we are only listening on port 5000 - skipping TCP segment"
+                            );
+                            continue;
+                        }
+
                         eprintln!(
                             "🎭 [EFRAME_FLAGS={}, EFRAME_PROTO=0x{:x}, IP_PACKET_SIZE={}]",
                             incoming_frame_tuntap_flags,
                             incoming_frame_tuntap_proto,
                             ip_packet.len()
                         );
-
                         let socket_pair = SocketPair {
                             src: Socket {
                                 ip: ip_packet_src_addr,
@@ -108,10 +117,12 @@ fn main() -> io::Result<()> {
                                 port: tcp_segment_dest_port,
                             },
                         };
-                        connections
-                            .entry(socket_pair)
-                            .or_default()
-                            .handle_packet(ipv4_header, tcp_header, tcp_payload);
+                        connections.entry(socket_pair).or_default().handle_packet(
+                            &interface,
+                            ipv4_header,
+                            tcp_header,
+                            tcp_payload,
+                        )?;
                     }
                 }
             }
